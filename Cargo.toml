@@ -7,4 +7,7 @@ edition = "2021"
 
 [dependencies]
 fstrings = "0.2.4-rc2"
-rand = "0.8.4"
+rand = { version = "0.8.4" }
+bevy = { version = "0.5.0" }
+ascii = { version = "1.0.0" }
+# bevy = { version = "0.5.0", features = ["dynamic"] }

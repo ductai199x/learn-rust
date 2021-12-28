@@ -1,3 +1,7 @@
+#![allow(unused_variables)]
+#![allow(unused_imports)]
+#![allow(dead_code)]
+
 use fstrings::*;
 use rand::Rng;
 use std::{collections::{HashMap}, fmt, io, borrow::Cow};
@@ -209,17 +213,17 @@ impl Company {
 }
 
 pub fn chapter8() {
-    // let num_el = 6;
-    // let mut rng = rand::thread_rng();
-    // let vec: Vec<u32> = (0..num_el).map(|_| rng.gen_range(0..100)).collect();
-    // let list_int = ListInt::new(vec);
-    // dbg!(&list_int);
+    let num_el = 6;
+    let mut rng = rand::thread_rng();
+    let vec: Vec<u32> = (0..num_el).map(|_| rng.gen_range(0..100)).collect();
+    let list_int = ListInt::new(vec);
+    dbg!(&list_int);
 
-    // let sorted_list = list_int.sort();
-    // dbg!(sorted_list);
+    let sorted_list = list_int.sort();
+    dbg!(sorted_list);
 
-    // println!("{}", pig_latin("first"));
-    // println!("{}", pig_latin("apple"));
+    println!("{}", pig_latin("first"));
+    println!("{}", pig_latin("apple"));
 
     let mut company = Company::new();
     let example_employee = Employee::new("abc", Department::Engineering);

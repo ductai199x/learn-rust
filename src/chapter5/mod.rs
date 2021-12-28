@@ -1,5 +1,5 @@
-use std::{fmt, io};
-
+use std::{fmt};
+use fstrings::*;
 #[derive(Debug)]
 struct Point(f32, f32);
 
@@ -18,10 +18,23 @@ trait IntoRect {
 impl IntoRect for (Point, Point) {
     fn into(self) -> Rect {
         let (x1, x2) = self;
-        let ul = Point(x1.0.min(x2.0), x1.1.min(x2.1));
-        let lr = Point(x1.0.max(x2.0), x1.1.max(x2.1));
+        let ul = Point(x1.0.min(x2.0), x1.1.max(x2.1));
+        let lr = Point(x1.0.max(x2.0), x1.1.min(x2.1));
         let w = lr.0 - ul.0;
-        let h = lr.1 - ul.1;
+        let h = ul.1 - lr.1;
+        Rect {
+            upper_left: ul,
+            lower_right: lr,
+            width: w,
+            height: h,
+        }
+    }
+}
+
+impl IntoRect for (Point, f32, f32) {
+    fn into(self) -> Rect {
+        let (ul, w, h) = self;
+        let lr = Point(ul.0 + w, ul.1 + h);
         Rect {
             upper_left: ul,
             lower_right: lr,
@@ -45,9 +58,16 @@ impl Rect {
 
     fn can_hold(&self, r2: &Rect) -> bool {
         self.upper_left.0 <= r2.upper_left.0
-            && self.upper_left.1 <= r2.upper_left.1
+            && self.upper_left.1 >= r2.upper_left.1
             && self.lower_right.0 >= r2.lower_right.0
-            && self.lower_right.1 >= r2.lower_right.1
+            && self.lower_right.1 <= r2.lower_right.1
+    }
+
+    fn is_point_inside(&self, p: &Point) -> bool {
+        self.upper_left.0 <= p.0
+            && self.upper_left.1 >= p.1
+            && self.lower_right.0 >= p.0
+            && self.lower_right.1 <= p.1
     }
 }
 
@@ -65,8 +85,9 @@ impl fmt::Display for Rect {
 
 pub fn chapter5() {
     let r1 = Rect::new((Point(0.0, 0.0), Point(10.0, 10.0)));
-    let r2 = Rect::new((Point(3.0, 3.0), Point(17.0, 17.0)));
+    let r2 = Rect::new((Point(3.0, 3.0), Point(10.0, 10.0)));
 
     println_f!("{r1} with area: {area}", area = r1.area());
+    println_f!("{r2} with area: {area}", area = r2.area());
     println!("r2 in r1? {}", r1.can_hold(&r2));
 }
