@@ -1,6 +1,6 @@
+extern crate bevy;
 extern crate fstrings;
 extern crate rand;
-extern crate bevy;
 
 // mod chapter1;
 // mod chapter2;

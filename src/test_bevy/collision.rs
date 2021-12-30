@@ -1,111 +1,15 @@
+#[macro_use]
 use bevy;
 use bevy::prelude::*;
 use fstrings::*;
 use std::{fmt, mem::swap, ops};
 
+use crate::{implement_struct_of_vec2_methods, implement_struct_of_vec2_traits};
+
 #[derive(Debug, Clone, Copy)]
 pub struct Point(pub Vec2);
-pub trait IntoPoint {
-    fn into(self) -> Point;
-}
-impl IntoPoint for (Point) {
-    fn into(self) -> Point {
-        self.clone()
-    }
-}
-impl IntoPoint for (Vec2) {
-    fn into(self) -> Point {
-        Point(self)
-    }
-}
-impl IntoPoint for (f32, f32) {
-    fn into(self) -> Point {
-        Point(Vec2::new(self.0, self.1))
-    }
-}
-impl Point {
-    pub fn new<A>(args: A) -> Self
-    where
-        A: IntoPoint,
-    {
-        args.into()
-    }
-
-    pub fn x(&self) -> f32 {
-        self.0.x
-    }
-
-    pub fn y(&self) -> f32 {
-        self.0.y
-    }
-
-    pub fn update_el(&mut self, c1: f32, c2: f32) {
-        self.0.x = c1;
-        self.0.y = c2;
-    }
-
-    pub fn update_point(&mut self, other: &Point) {
-        self.0.x = other.0.x;
-        self.0.y = other.0.y;
-    }
-
-    pub fn update_vec(&mut self, other: &Vec2) {
-        self.0.x = other.x;
-        self.0.y = other.y;
-    }
-}
-impl Default for Point {
-    fn default() -> Self {
-        Self(Vec2::ZERO) // middle of the screen
-    }
-}
-impl fmt::Display for Point {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write_f!(f, "({x} {y})", x = self.x(), y = self.y())
-    }
-}
-impl ops::Add<Point> for Point {
-    type Output = Point;
-
-    fn add(self, other: Point) -> Point {
-        Point(self.0 + other.0)
-    }
-}
-impl ops::Add<f32> for Point {
-    type Output = Point;
-
-    fn add(self, other: f32) -> Point {
-        Point(self.0 + Vec2::splat(other))
-    }
-}
-impl ops::Sub<Point> for Point {
-    type Output = Point;
-
-    fn sub(self, other: Point) -> Point {
-        Point(self.0 - other.0)
-    }
-}
-impl ops::Sub<f32> for Point {
-    type Output = Point;
-
-    fn sub(self, other: f32) -> Point {
-        Point(self.0 - Vec2::splat(other))
-    }
-}
-impl ops::Mul<Point> for Point {
-    type Output = Point;
-
-    fn mul(self, other: Point) -> Point {
-        Point(self.0 * other.0)
-    }
-}
-impl ops::Mul<f32> for Point {
-    type Output = Point;
-
-    fn mul(self, other: f32) -> Point {
-        Point(self.0 * other)
-    }
-}
+implement_struct_of_vec2_traits!(Point, ConstructorPoint, UpdatePoint);
+implement_struct_of_vec2_methods!(Point, ConstructorPoint, UpdatePoint);
 
 #[derive(Debug, Clone, Copy)]
 pub struct Ray {
@@ -152,6 +56,29 @@ pub fn rect_collision_side_to_vec2(side: RectCollisionSide) -> Vec2 {
         RectCollisionSide::BottomLeft => Vec2::new(-1., 1.),
         RectCollisionSide::BottomRight => Vec2::new(1., 1.),
     }
+}
+
+pub fn resolve_collision_stop(
+    side: RectCollisionSide,
+    speed: &Vec2,
+    contact_time: f32,
+    time_step: f32,
+) -> Vec2 {
+    rect_collision_side_to_vec2(side) * (*speed) * (1_f32 - contact_time) * time_step
+}
+
+pub fn resolve_collision_reflect(
+    side: RectCollisionSide,
+    speed: &Vec2,
+    contact_time: f32,
+    time_step: f32,
+    reflect_speed_ratio: f32,
+) -> Vec2 {
+    rect_collision_side_to_vec2(side)
+        * (*speed)
+        * (1_f32 - contact_time)
+        * time_step
+        * (1_f32 + reflect_speed_ratio)
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -268,7 +195,13 @@ impl Rect {
 
         // dbg!((near_x, far_y, near_y, far_x));
 
-        let t_hit_near = near_x.max(near_y);
+        // let t_hit_near = near_x.max(near_y);
+        let mut t_hit_near = 0_f32;
+        if near_x > near_y {
+            t_hit_near = near_x;
+        } else {
+            t_hit_near = near_y;
+        }
         let t_hit_far = far_x.max(far_y);
 
         // Reject if ray direction is Pointing away from object
@@ -276,19 +209,23 @@ impl Rect {
             return (false, None, None, None);
         }
 
-        contact_point.update_point(&(ray.start + ray.end * t_hit_near));
+        contact_point.update((ray.start + ray.end * t_hit_near));
 
         if near_x > near_y {
             if ray_len_x < 0. {
                 contact_normal = RectCollisionSide::Right;
-            } else {
+            } else if ray_len_x > 0. {
                 contact_normal = RectCollisionSide::Left;
+            } else {
+                contact_normal = RectCollisionSide::None;
             }
         } else if near_x < near_y {
             if ray_len_y < 0. {
                 contact_normal = RectCollisionSide::Bottom;
-            } else {
+            } else if ray_len_y > 0. {
                 contact_normal = RectCollisionSide::Top;
+            } else {
+                contact_normal = RectCollisionSide::None;
             }
         } else {
             if ray_len_x > 0. && ray_len_y > 0. {
@@ -299,6 +236,8 @@ impl Rect {
                 contact_normal = RectCollisionSide::BottomLeft;
             } else if ray_len_x < 0. && ray_len_y > 0. {
                 contact_normal = RectCollisionSide::TopRight;
+            } else {
+                contact_normal = RectCollisionSide::None;
             }
             // dbg!((near_x, near_y, far_x, far_y, ray_len_x, ray_len_y));
         }
@@ -329,16 +268,21 @@ impl Rect {
             self.height + r2.height,
         ));
 
-        let ray_origin = r2.upper_left.0 + Vec2::new(r2.width / 2., r2.height / 2.);
+        // ray's origin is the center of r2
+        let ray_origin = r2.upper_left + Vec2::new(r2.width / 2., r2.height / 2.);
+        // ray's destination is orgin + displacement
         let ray_dest = ray_origin + (*r2_direction) * (*r2_speed) * time_step;
         let r2_ray = Ray {
-            start: Point::new(ray_origin),
-            end: Point::new(ray_dest),
+            start: ray_origin,
+            end: ray_dest,
         };
 
         let (collided, contact_point, contact_normal, contact_time) =
             expanded_r1.is_ray_intersect(&r2_ray);
-        if collided && (contact_time.unwrap() >= 0.0 && contact_time.unwrap() < 1.0) {
+
+        let res = collided && (contact_time.unwrap() >= 0.0 && contact_time.unwrap() <= 1.0);
+
+        if res {
             return (true, contact_point, contact_normal, contact_time);
         } else {
             return (false, None, None, None);

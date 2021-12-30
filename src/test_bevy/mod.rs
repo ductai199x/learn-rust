@@ -1,30 +1,34 @@
 #![allow(unused)]
 
 mod collision;
-use collision::*;
-
+mod fps;
+mod helper;
+mod map;
+mod monster;
 mod player;
+#[macro_use]
+mod vec2_wrapper;
+
+use collision::*;
+use fps::FpsPlugin;
+use helper::*;
+use map::MapPlugin;
+use monster::MonsterPlugin;
 use player::PlayerPlugin;
 
-mod map;
-use map::MapPlugin;
-
-mod helper;
-use helper::*;
-
 use fstrings::*;
+use std::{fmt, ops};
 
 use bevy::input::*;
 use bevy::prelude::*;
 use bevy::window::*;
-use bevy::diagnostic::{FrameTimeDiagnosticsPlugin, LogDiagnosticsPlugin};
 
 const TIME_STEP: f32 = 1. / 60.;
 
 // Shared Resources
-
 pub struct Materials {
     player_materials: Handle<ColorMaterial>,
+    monster_materials: Handle<ColorMaterial>,
     wall_materials: Handle<ColorMaterial>,
     ray_materials: Handle<ColorMaterial>,
 }
@@ -41,11 +45,19 @@ pub struct CursorPosition {
 // Shared Resources
 
 // Components
-#[derive(Default)]
-pub struct PositionCmp(Vec2);
+struct FpsText;
 
-#[derive(Default)]
-pub struct SpeedCmp(Vec2);
+struct ColorText;
+
+#[derive(Debug, Clone, Copy)]
+pub struct PositionCmp(pub Vec2);
+implement_struct_of_vec2_traits!(PositionCmp, ConstructorPositionCmp, UpdatePositionCmp);
+implement_struct_of_vec2_methods!(PositionCmp, ConstructorPositionCmp, UpdatePositionCmp);
+
+#[derive(Debug, Clone, Copy)]
+pub struct SpeedCmp(pub Vec2);
+implement_struct_of_vec2_traits!(SpeedCmp, ConstructorSpeedCmp, UpdateSpeedCmp);
+implement_struct_of_vec2_methods!(SpeedCmp, ConstructorSpeedCmp, UpdateSpeedCmp);
 
 #[derive(Default)]
 pub struct MovementCmp {
@@ -71,10 +83,23 @@ pub struct RayCmp {
     thickness: f32,
     length: f32,
 }
+
+#[derive(Debug)]
+pub enum CollideType {
+    None = 1,
+    Reflect = 2,
+    Destroy = 4,
+    Stop = 8,
+}
+
+pub struct CollideCmp {
+    property: u32,
+}
 // Components
 
 // Entities
 pub struct PlayerEntity;
+pub struct MonsterEntity;
 pub struct WallEntity;
 pub struct RayEntity;
 // Entities
@@ -90,14 +115,12 @@ pub fn bevy_main() {
         })
         .add_plugins(DefaultPlugins)
         .add_plugin(PlayerPlugin)
+        .add_plugin(MonsterPlugin)
         .add_plugin(MapPlugin)
-        .add_plugin(FrameTimeDiagnosticsPlugin)
-        // .add_plugin(LogDiagnosticsPlugin::default())
+        .add_plugin(FpsPlugin)
         .add_startup_system(setup.system())
-        .add_startup_stage("game_setup_rays", SystemStage::single(ray_spawn.system()))
         .add_system(get_window_size.system())
         .add_system(get_cursor_pos.system())
-        .add_system(ray_move.system())
         .run();
 }
 
@@ -117,6 +140,7 @@ fn setup(
     // create main resources
     commands.insert_resource(Materials {
         player_materials: materials.add(Color::rgb(1., 0.7, 0.7).into()),
+        monster_materials: materials.add(Color::rgb(0.2, 0.2, 0.7).into()),
         wall_materials: materials.add(Color::rgb(1., 1., 1.).into()),
         ray_materials: materials.add(Color::rgb(1., 1., 1.).into()),
     });
@@ -152,98 +176,96 @@ fn get_cursor_pos(
     }
 }
 
-pub fn get_ray_tf_mat(
-    ray: &collision::Ray,
-    thickness: f32,
-    win_size: &Res<GameWindowSize>,
-) -> (Point, Mat4) {
-    let sp = ray.start; // start point
-    let ep = ray.end; // end point
+// pub fn get_ray_tf_mat(
+//     ray: &collision::Ray,
+//     thickness: f32,
+//     win_size: &Res<GameWindowSize>,
+// ) -> (Point, Mat4) {
+//     let sp = ray.start; // start point
+//     let ep = ray.end; // end point
 
-    let ray_l = sp.0.distance(ep.0);
-    let ray_t = thickness;
-    let ray_z = 10.;
-    let ray_angle = (ep.0 - sp.0).angle_between(Vec2::new(1., 0.));
+//     let ray_l = sp.distance(&ep);
+//     let ray_t = thickness;
+//     let ray_z = 10.;
+//     let ray_angle = (ep - sp).angle_between(&Point::new((1., 0.)));
 
-    let mut bevy_sp = topleft_to_mid_origin(&sp, win_size);
-    bevy_sp = bevy_sp
-        + Point::new((
-            (ray_l / 2.) * ray_angle.cos(),
-            (ray_l / 2.) * ray_angle.sin() - ray_t,
-        ));
+//     let mut bevy_sp = topleft_to_mid_origin(&sp, win_size);
+//     bevy_sp = bevy_sp
+//         + Point::new((
+//             (ray_l / 2.) * ray_angle.cos(),
+//             (ray_l / 2.) * ray_angle.sin() - ray_t,
+//         ));
 
-    let tf_mat = Mat4::from_rotation_translation(
-        Quat::from_rotation_z(ray_angle),
-        Vec3::new(bevy_sp.x(), bevy_sp.y(), ray_z),
-    );
+//     let tf_mat = Mat4::from_rotation_translation(
+//         Quat::from_rotation_z(ray_angle),
+//         Vec3::new(bevy_sp.x(), bevy_sp.y(), ray_z),
+//     );
 
-    return (bevy_sp, tf_mat);
-}
+//     return (bevy_sp, tf_mat);
+// }
 
-fn ray_spawn(mut commands: Commands, materials: Res<Materials>, win_size: Res<GameWindowSize>) {
-    let sp = Point::new((150., 150.)); // start point
-    let ep = Point::new((210., 400.)); // end point
-    let length = sp.0.distance(ep.0);
-    let thickness = 2.;
-    let ray = collision::Ray { start: sp, end: ep };
-    let (bevy_sp, tf_mat) = get_ray_tf_mat(&ray, thickness, &win_size);
+// fn ray_spawn(mut commands: Commands, materials: Res<Materials>, win_size: Res<GameWindowSize>) {
+//     let sp = Point::new((150., 150.)); // start point
+//     let ep = Point::new((210., 400.)); // end point
+//     let length = sp.distance(&ep);
+//     let thickness = 2.;
+//     let ray = collision::Ray { start: sp, end: ep };
+//     let (bevy_sp, tf_mat) = get_ray_tf_mat(&ray, thickness, &win_size);
 
-    commands
-        .spawn_bundle(SpriteBundle {
-            material: materials.ray_materials.clone(),
-            sprite: Sprite::new(Vec2::new(length, thickness)),
-            transform: Transform::from_matrix(tf_mat),
-            ..Default::default()
-        })
-        .insert(RayEntity)
-        .insert(NameCmp(STR("Ray1")))
-        .insert(RayCmp {
-            ray,
-            thickness,
-            length,
-        });
+//     commands
+//         .spawn_bundle(SpriteBundle {
+//             material: materials.ray_materials.clone(),
+//             sprite: Sprite::new(Vec2::new(length, thickness)),
+//             transform: Transform::from_matrix(tf_mat),
+//             ..Default::default()
+//         })
+//         .insert(RayEntity)
+//         .insert(NameCmp(STR("Ray1")))
+//         .insert(RayCmp {
+//             ray,
+//             thickness,
+//             length,
+//         });
 
-    println_f!("Spawned Ray at ({sp} -> {bevy_sp}) with length {length}");
-}
+//     println_f!("Spawned Ray at ({sp} -> {bevy_sp}) with length {length}");
+// }
 
-fn ray_move(
-    win_size: Res<GameWindowSize>,
-    cursor_pos: Res<CursorPosition>,
-    mut materials: ResMut<Assets<ColorMaterial>>,
-    mut ray_query: Query<(
-        &mut RayCmp,
-        &mut Transform,
-        &Handle<ColorMaterial>,
-        With<RayEntity>,
-    )>,
-    wall_query: Query<(
-        Entity,
-        &RectangleHitboxCmp,
-        &Handle<ColorMaterial>,
-        &WallEntity,
-    )>,
-) {
-    if let Ok((mut ray_comp, mut ray_tf, mut ray_color, _)) = ray_query.single_mut() {
-        if cursor_pos.x != None && cursor_pos.y != None {
-            ray_comp.ray.end = Point::new((cursor_pos.x.unwrap(), cursor_pos.y.unwrap()));
-            let new_length = ray_comp.ray.start.0.distance(ray_comp.ray.end.0);
-            let (bevy_sp, tf_mat) = get_ray_tf_mat(&ray_comp.ray, ray_comp.thickness, &win_size);
-            let (_, rot_mat, tran_mat) = tf_mat.to_scale_rotation_translation();
-            ray_tf.scale = Vec3::new(new_length / ray_comp.length, 1., 1.);
-            ray_tf.rotation = rot_mat;
-            ray_tf.translation = tran_mat;
+// fn ray_move(
+//     win_size: Res<GameWindowSize>,
+//     cursor_pos: Res<CursorPosition>,
+//     mut materials: ResMut<Assets<ColorMaterial>>,
+//     mut ray_query: Query<(
+//         &mut RayCmp,
+//         &mut Transform,
+//         &Handle<ColorMaterial>,
+//         With<RayEntity>,
+//     )>,
+//     wall_query: Query<(
+//         Entity,
+//         &RectangleHitboxCmp,
+//         &Handle<ColorMaterial>,
+//         &WallEntity,
+//     )>,
+// ) {
+//     if let Ok((mut ray_comp, mut ray_tf, mut ray_color, _)) = ray_query.single_mut() {
+//         if cursor_pos.x != None && cursor_pos.y != None {
+//             ray_comp.ray.end = Point::new((cursor_pos.x.unwrap(), cursor_pos.y.unwrap()));
+//             let new_length = ray_comp.ray.start.distance(&ray_comp.ray.end);
+//             let (bevy_sp, tf_mat) = get_ray_tf_mat(&ray_comp.ray, ray_comp.thickness, &win_size);
+//             let (_, rot_mat, tran_mat) = tf_mat.to_scale_rotation_translation();
+//             ray_tf.scale = Vec3::new(new_length / ray_comp.length, 1., 1.);
+//             ray_tf.rotation = rot_mat;
+//             ray_tf.translation = tran_mat;
 
-            
-
-            for (wall_entity, wall_rect, wall_color, _) in wall_query.iter() {
-                let wall_color = &mut materials.get_mut(wall_color).unwrap().color;
-                let (collided, _, _, contact_time) = wall_rect.rect.is_ray_intersect(&ray_comp.ray);
-                if collided && contact_time.unwrap() < 1_f32 {
-                    set_bevy_color_rgba(wall_color, 0., 1., 1., 1.);
-                } else {
-                    set_bevy_color_rgba(wall_color, 1., 1., 1., 1.);
-                }
-            }
-        }
-    }
-}
+//             for (wall_entity, wall_rect, wall_color, _) in wall_query.iter() {
+//                 let wall_color = &mut materials.get_mut(wall_color).unwrap().color;
+//                 let (collided, _, _, contact_time) = wall_rect.rect.is_ray_intersect(&ray_comp.ray);
+//                 if collided && contact_time.unwrap() < 1_f32 {
+//                     set_bevy_color_rgba(wall_color, 0., 1., 1., 1.);
+//                 } else {
+//                     set_bevy_color_rgba(wall_color, 1., 1., 1., 1.);
+//                 }
+//             }
+//         }
+//     }
+// }

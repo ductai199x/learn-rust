@@ -6,7 +6,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-fstrings = "0.2.4-rc2"
+fstrings = { version = "0.2.4-rc2" }
 rand = { version = "0.8.4" }
 bevy = { version = "0.5.0" }
 ascii = { version = "1.0.0" }

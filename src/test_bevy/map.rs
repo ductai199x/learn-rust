@@ -1,5 +1,5 @@
-use fstrings::*;
 use ascii::AsciiString;
+use fstrings::*;
 
 use bevy::input::*;
 use bevy::prelude::*;
@@ -20,7 +20,8 @@ pub fn get_map() -> Map {
         block_size: Vec2::new(20., 20.),
         topleft: Vec2::new(20., 20.),
         map_string: AsciiString::from_ascii(
-"********************
+            "
+********************
 *                  *
 *                  *
 *                  *
@@ -39,21 +40,19 @@ pub fn get_map() -> Map {
 *                  *
 *                  *
 *                  *
-********  **********").unwrap(),
+********************",
+        )
+        .unwrap(),
     }
-} 
+}
 
 pub struct MapPlugin;
 
 impl Plugin for MapPlugin {
     fn build(&self, app: &mut AppBuilder) {
-        app.add_startup_stage(
-            "game_setup_walls", 
-            SystemStage::single(map_spawn.system())
-        );
+        app.add_startup_stage("game_setup_walls", SystemStage::single(map_spawn.system()));
     }
 }
-
 
 fn map_spawn(mut commands: Commands, materials: Res<Materials>, win_size: Res<GameWindowSize>) {
     let map = get_map();
@@ -63,7 +62,7 @@ fn map_spawn(mut commands: Commands, materials: Res<Materials>, win_size: Res<Ga
         let mut sp = Point::new(sp);
         let mut bevy_sp = topleft_to_mid_origin(&sp, &win_size);
         bevy_sp = bevy_sp + Point::new((wall_w / 2., -wall_h / 2.));
-    
+
         commands
             .spawn_bundle(SpriteBundle {
                 material: materials.wall_materials.clone(),
@@ -72,13 +71,16 @@ fn map_spawn(mut commands: Commands, materials: Res<Materials>, win_size: Res<Ga
                 ..Default::default()
             })
             .insert(WallEntity)
-            .insert(NameCmp(STR("Wall1")))
+            .insert(NameCmp(f!("Wall {sp}")))
             .insert(RectangleHitboxCmp {
                 rect: collision::Rect::new((sp, wall_w, wall_h)),
+            })
+            .insert(CollideCmp {
+                property: CollideType::Stop as u32 | CollideType::Reflect as u32,
             });
         println!("Spawned Wall at ({} -> {})", sp, bevy_sp);
     };
-    
+
     let mut row = 0_f32;
     let mut col = 0_f32;
     for char in map.map_string.into_iter() {
